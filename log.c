@@ -150,7 +150,7 @@ void log_server_msg(int socket, char* msg, char* ip) {
 }
 
 //void log_ip(int socket) { // Only used on connection
-//    fprintf(logfile, "Client IP: %s\n", get_ip(socket));
+//    fprintf(logfile, "client IP: %s\n", get_ip(socket));
 //}
 
 char* get_ip(int socket) {

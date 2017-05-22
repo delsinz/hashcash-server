@@ -49,6 +49,7 @@ typedef struct work_s {
     BYTE solution[17];
     BYTE diff[9];
 
+    char client_ip[INET_ADDRSTRLEN];
     int numworker;
     int fd;
 } Work;
@@ -61,15 +62,22 @@ char* get_response(char* client_msg, size_t msg_len);
 int id_msg(char* msg, size_t msg_len);
 int handle_soln(char* client_msg);
 void handle_work_msg(char* msg, int sock, char* ip);
+void handle_abrt_msg(int sock, char* ip);
+void abort_work(int sock);
+void remove_elements(int sock);
 void enqueue(Work* work);
 Work* dequeue();
 void print_queue();
+void* work_processor(void* none);
 
 
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t work_mutex = PTHREAD_MUTEX_INITIALIZER;
 Work* work_queue = NULL;
 Work* queue_end = NULL;
+Work* active_work_pointer;
+int active_work;
 
 
 
@@ -114,6 +122,12 @@ int main(int argc, char **argv)
     clilen = sizeof(cli_addr);
 
     /* Thread to handle WORK messages */
+    pthread_mutex_lock(&work_mutex);
+    active_work = 0;
+    pthread_mutex_unlock(&work_mutex);
+    pthread_t worker;
+    pthread_create(&worker, NULL, work_processor, NULL);
+
 
     while(1) {
         client_sockfd = accept(sockfd, (struct sockaddr*) &cli_addr, (socklen_t*) &clilen);
@@ -192,13 +206,9 @@ void* connection_handler(void* client_sockfd) {
             log_server_msg(sock, response, ip);
         } else if (msg_type == WORK) {
             handle_work_msg(client_msg, sock, ip);
-            strcpy(response, "This is a WORK message\r\n");
-            write(sock, response, strlen(response));
-            log_server_msg(sock, response, ip);
         } else if (msg_type == ABRT) {
-            strcpy(response, "This is an ABRT message\r\n");
-            write(sock, response, strlen(response));
-            log_server_msg(sock, response, ip);
+            handle_abrt_msg(sock, ip);
+            print_queue();
         } else {
             strcpy(response, "ERRO invalid message\r\n");
             write(sock, response, strlen(response));
@@ -211,7 +221,9 @@ void* connection_handler(void* client_sockfd) {
     }
 
     if (read_size == 0) {
+        abort_work(sock);
         log_disconnection(sock, ip);
+        close(sock);
         puts("client disconnected.");
         fflush(stdout);
     } else if (read_size == -1) {
@@ -394,6 +406,7 @@ void handle_work_msg(char* msg, int sock, char* ip) {
     uint256_sl(res,target,pow);
 
     Work* wk = malloc(sizeof(Work));
+    strcpy(wk->client_ip, ip);
     wk->prev = NULL;
     wk->next = NULL;
     wk->fd = sock;
@@ -409,6 +422,71 @@ void handle_work_msg(char* msg, int sock, char* ip) {
     enqueue(wk);
     print_queue();
     pthread_mutex_unlock(&queue_mutex);
+}
+
+
+
+void handle_abrt_msg(int sock, char* ip) {
+    abort_work(sock);
+    char* response = "OKAY\r\n";
+    write(sock, response, strlen(response));
+    log_server_msg(sock, response, ip);
+}
+
+
+
+void abort_work(int sock) {
+    pthread_mutex_lock(&work_mutex);
+    pthread_mutex_lock(&queue_mutex);
+    remove_elements(sock);
+    if(active_work_pointer!= NULL) {
+        if(active_work_pointer->fd == sock) {
+            active_work = 0;
+            active_work_pointer = NULL;
+        }
+    }
+    pthread_mutex_unlock(&queue_mutex);
+    pthread_mutex_unlock(&work_mutex);
+}
+
+
+
+void remove_elements(int sock) {
+    Work* temp = work_queue;
+    Work* target = NULL;
+    while (temp != NULL) {
+        if (temp->fd == sock) { // This is the work we want to remove from queue.
+            if(temp == work_queue) { // Probe is head of queue
+                target = temp;
+                work_queue = work_queue->next;
+                if (work_queue != NULL) { // Queue still not empty
+                    work_queue->prev = NULL;
+                } else {
+                    queue_end = NULL;
+                }
+                temp = work_queue;
+                free(target);
+            } else if (temp == queue_end) { // Probe is end of queue
+                target = temp;
+                queue_end = queue_end->prev;
+                if (queue_end != NULL) { // Queue still not empty
+                    queue_end->next = NULL;
+                } else {
+                    work_queue = NULL;
+                }
+                temp = NULL;
+                free(target);
+            } else { // Probe is at mid of queue
+                target = temp;
+                temp->prev->next = temp->next;
+                temp->next->prev = temp->prev;
+                temp = temp->next;
+                free(target);
+            }
+        } else { // This is not what we are looking for
+            temp = temp->next;
+        }
+    }
 }
 
 
@@ -460,6 +538,138 @@ void print_queue() {
         temp = temp->next;
     }
     printf("<<<<<<<< Total %d works queued >>>>>>>>\n", n);
+}
+
+
+
+void* work_processor(void* none) {
+    pthread_detach(pthread_self());
+
+    (void)none;//stop warning message
+    Work* work;
+    while(1){
+        pthread_mutex_lock(&work_mutex);
+        pthread_mutex_lock(&queue_mutex);
+        if(active_work == 0){
+            //printf("before dequeue : %d\n",print());
+            work = dequeue();
+            if(work != NULL){
+                //printf("after dequeue : %d\n",print());
+                active_work_pointer = work;
+                active_work = 1;
+            }
+        }
+        pthread_mutex_unlock(&queue_mutex);
+        pthread_mutex_unlock(&work_mutex);
+        if(work != NULL){
+            //convert nonce
+            int i;
+            BYTE res2[32];
+            BYTE nonce[32];//actually it is 16 in length
+            BYTE one[32];
+            uint256_init(res2);
+            uint256_init(nonce);
+            uint256_init(one);
+            one[31] = 0x1;
+            //print_uint256(one);
+            //print_uint256(nonce);
+            for(i = 0;i < 16;i+=2){
+                char temp[3];
+                temp[2] = '\0';
+                strncpy(temp,(char*)(work->solution + i),2);
+                int number = (int)strtol(temp, NULL, 16);
+                nonce[24 + i/2] = number;
+            }
+            //print_uint256(nonce);
+            char soln[17] = "0000000000000000";
+            strcat((char*)work->seed,soln);
+
+            //printf("work->seed %s\n",(char*)work->seed);// seed | nonce
+            //printf("length %d\n",strlen((char*)work->seed));//expecting 80
+
+
+            int index;
+
+            BYTE nseed[40];
+            for (index = 0; index < 40; nseed[index++] = 0);//init
+
+            for(index = 0; index < 80;index+=2){
+                char temp[3];
+                temp[2] = '\0';
+                strncpy(temp,(char*)(work->seed + index),2);
+                int number = (int)strtol(temp, NULL, 16);
+                nseed[index/2] = number;
+            }
+            //printf("work nseed : %s\n",work->seed);
+            /*
+            for(i = 0;i < 40;i++){
+                printf("%02x", nseed[i]);
+            }printf("\n");
+            */
+            work->seed[64] = '\0';
+            BYTE last32[32];
+            strncpy((char*)last32,(char*)(nseed) + 8,32);
+            int found = 0;
+            //print_uint256(work->target);
+            while(!found && active_work == 1){// && count < ffffffffffffffff - start
+                //+1
+                uint256_add(nonce,nonce,one);
+                uint256_add(res2,last32,nonce);
+                for(index = 0;index < 32;index++){
+                    nseed[index + 8] = res2[index];
+                }
+                /*
+                for(i = 0;i < 40;i++){
+                    printf("%02x", nseed[i]);
+                }
+                printf("\n");*/
+
+                SHA256_CTX ctx;
+                BYTE buffer1[SHA256_BLOCK_SIZE];
+                BYTE buffer2[SHA256_BLOCK_SIZE];
+                uint256_init(buffer1);
+                uint256_init(buffer2);
+                sha256_init(&ctx);
+                sha256_update(&ctx, nseed, 40);
+                sha256_final(&ctx, buffer1);
+                //print_uint256(buffer1);
+                sha256_init(&ctx);
+                sha256_update(&ctx, buffer1, 32);
+                sha256_final(&ctx, buffer2);
+                int pass = memcmp(work->target, buffer2, SHA256_BLOCK_SIZE);
+                //print_uint256(buffer2);
+                //printf("pass value %d\n",pass);
+                if(pass > 0){
+                    found = 1;
+                    char reply[98];//include "\r\n\0"
+                    strcpy(reply , "SOLN ");
+                    strcat(reply,(char*)work->diff);
+                    strcat(reply," ");
+                    strcat(reply,(char*)work->seed);
+                    strcat(reply," ");
+                    char stringnonce[17];
+                    stringnonce[16] = '\0';
+                    int i;
+                    //print_uint256(nonce);
+                    int length = 0;
+                    for(i = 0;i < 8;i++){
+                        int number = *(nonce + i + 24);
+                        length += sprintf(stringnonce + length, "%02x", number);
+                    }
+                    strcat(reply,stringnonce);
+                    strcat(reply,"\r\n");
+                    write(work->fd,reply,strlen(reply));
+
+                    log_server_msg(work->fd, reply, work->client_ip);
+                    printf("server(%d) : %s",work->fd,reply);
+                    pthread_mutex_lock(&work_mutex);
+                    active_work = 0;
+                    pthread_mutex_unlock(&work_mutex);
+                    free(work);
+                }
+            }
+        }
+    }
 }
 
 
