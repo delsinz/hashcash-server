@@ -27,6 +27,7 @@ The port number is passed as an argument
 
 
 #define MAX_CLIENTS 100
+#define MAX_WORKS 10
 #define MAX_MSG_SIZE 256
 #define PING 0
 #define PONG 1
@@ -68,6 +69,7 @@ void remove_elements(int sock);
 void enqueue(Work* work);
 Work* dequeue();
 void print_queue();
+int queue_len();
 void* work_processor(void* none);
 
 
@@ -353,75 +355,69 @@ int id_msg(char* msg, size_t msg_len) {
 
 
 void handle_work_msg(char* msg, int sock, char* ip) {
-    BYTE seed[81];
-    BYTE solution[17];
-    BYTE numworker[3];
-    bzero(seed,64);
-    bzero(solution,16);
-    bzero(numworker,3);
-    memcpy(seed, msg + 14, 64);
-    seed[64] = '\0';
-    memcpy(solution, msg + 79, 16);
-    solution[16] = '\0';
-    memcpy(numworker, msg + 96, 2);
-    int decnumwork = (int)strtol((char*)numworker, NULL, 16);
-    //printf("seed %s solution %s\n",seed,solution);
-    //get target
-    BYTE dif[9];//difficulty
-    memcpy(dif, msg + 5, 8);
-    dif[8] = '\0';
-    //printf("difficulty : %s\n",dif);
-    BYTE alpha[3];
-    BYTE beta[7];
-    memcpy(alpha,dif,2);
-    alpha[2] = '\0';
-    memcpy(beta,dif+2,6);
-    beta[6] = '\0';
-    //printf("alpha : %s\n",alpha);
-    //printf("beta : %s\n",beta);
-    int al = (int)strtol((char*)alpha, NULL, 16);
-    //int be = (int)strtol((char*)beta, NULL, 16);
-    //printf("alpha : %d\n",al);
-    //printf("beta : %d\n",be);
-    int pow = 8 * (al - 3);
-    //uint64_t target = be * pow(2, 8 * (al - 3));
-    //printf("power : %d\n",pow);
-    BYTE target[32];
-    uint256_init(target);
-    BYTE b1[3],b2[3],b3[3];
-    memcpy(b1,beta,2);
-    b1[2] = '\0';
-    memcpy(b2,beta + 2,2);
-    b2[2] = '\0';
-    memcpy(b3,beta + 4,2);
-    b3[2] = '\0';
-    //printf("b1 : %s,b2 : %s, b3 : %s\n",b1,b2,b3);
-    target[29] = (BYTE)strtol((char*)b1, NULL, 16);
-    target[30] = (BYTE)strtol((char*)b2, NULL, 16);
-    target[31] = (BYTE)strtol((char*)b3, NULL, 16);
-    //printf("%x %x %x\n",target[29],target[30],target[31]);
-    //print_uint256(target);
-    BYTE res[32];
-    uint256_init(res);
-    uint256_sl(res,target,pow);
+    if (queue_len() < MAX_WORKS) {
+        BYTE seed[81];
+        BYTE solution[17];
+        BYTE numworker[3];
+        bzero(seed,64);
+        bzero(solution,16);
+        bzero(numworker,3);
+        memcpy(seed, msg + 14, 64);
+        seed[64] = '\0';
+        memcpy(solution, msg + 79, 16);
+        solution[16] = '\0';
+        memcpy(numworker, msg + 96, 2);
+        int decnumwork = (int)strtol((char*)numworker, NULL, 16);
+        //get target
+        BYTE dif[9];//difficulty
+        memcpy(dif, msg + 5, 8);
+        dif[8] = '\0';
+        BYTE alpha[3];
+        BYTE beta[7];
+        memcpy(alpha,dif,2);
+        alpha[2] = '\0';
+        memcpy(beta,dif+2,6);
+        beta[6] = '\0';
+        int al = (int)strtol((char*)alpha, NULL, 16);
+        int pow = 8 * (al - 3);
+        BYTE target[32];
+        uint256_init(target);
+        BYTE b1[3],b2[3],b3[3];
+        memcpy(b1,beta,2);
+        b1[2] = '\0';
+        memcpy(b2,beta + 2,2);
+        b2[2] = '\0';
+        memcpy(b3,beta + 4,2);
+        b3[2] = '\0';
+        target[29] = (BYTE)strtol((char*)b1, NULL, 16);
+        target[30] = (BYTE)strtol((char*)b2, NULL, 16);
+        target[31] = (BYTE)strtol((char*)b3, NULL, 16);
+        BYTE res[32];
+        uint256_init(res);
+        uint256_sl(res,target,pow);
 
-    Work* wk = malloc(sizeof(Work));
-    strcpy(wk->client_ip, ip);
-    wk->prev = NULL;
-    wk->next = NULL;
-    wk->fd = sock;
-    wk->numworker = decnumwork;
-    int i;
-    for(i = 0;i < 32;i++){
-        wk->target[i] = res[i];
+        Work* wk = malloc(sizeof(Work));
+        strcpy(wk->client_ip, ip);
+        wk->prev = NULL;
+        wk->next = NULL;
+        wk->fd = sock;
+        wk->numworker = decnumwork;
+        int i;
+        for(i = 0;i < 32;i++){
+            wk->target[i] = res[i];
+        }
+        strcpy((char*)(wk->diff),(char*)dif);
+        strcpy((char*)(wk->seed),(char*)seed);//81, 16 reserve for nonce
+        strcpy((char*)(wk->solution),(char*)solution);
+        pthread_mutex_lock(&queue_mutex);
+        enqueue(wk);
+        print_queue();
+        pthread_mutex_unlock(&queue_mutex);
+    } else {
+        char* response = "ERRO work queue is full\r\n";
+        write(sock, response, strlen(response));
+        log_server_msg(sock, response, ip);
     }
-    strcpy((char*)(wk->diff),(char*)dif);
-    strcpy((char*)(wk->seed),(char*)seed);//81, 16 reserve for nonce
-    strcpy((char*)(wk->solution),(char*)solution);
-    pthread_mutex_lock(&queue_mutex);
-    enqueue(wk);
-    print_queue();
-    pthread_mutex_unlock(&queue_mutex);
 }
 
 
@@ -526,6 +522,18 @@ Work* dequeue() {
 
 
 
+int queue_len() {
+    Work* temp = work_queue;
+    int n = 0;
+    while (temp != NULL) {
+        n += 1;
+        temp = temp->next;
+    }
+    return n;
+}
+
+
+
 void print_queue() {
     Work* temp = work_queue;
     int n = 0;
@@ -551,10 +559,8 @@ void* work_processor(void* none) {
         pthread_mutex_lock(&work_mutex);
         pthread_mutex_lock(&queue_mutex);
         if(active_work == 0){
-            //printf("before dequeue : %d\n",print());
             work = dequeue();
             if(work != NULL){
-                //printf("after dequeue : %d\n",print());
                 active_work_pointer = work;
                 active_work = 1;
             }
@@ -580,13 +586,9 @@ void* work_processor(void* none) {
                 int number = (int)strtol(temp, NULL, 16);
                 nonce[24 + i/2] = number;
             }
-            //print_uint256(nonce);
+
             char soln[17] = "0000000000000000";
             strcat((char*)work->seed,soln);
-
-            //printf("work->seed %s\n",(char*)work->seed);// seed | nonce
-            //printf("length %d\n",strlen((char*)work->seed));//expecting 80
-
 
             int index;
 
@@ -600,12 +602,7 @@ void* work_processor(void* none) {
                 int number = (int)strtol(temp, NULL, 16);
                 nseed[index/2] = number;
             }
-            //printf("work nseed : %s\n",work->seed);
-            /*
-            for(i = 0;i < 40;i++){
-                printf("%02x", nseed[i]);
-            }printf("\n");
-            */
+
             work->seed[64] = '\0';
             BYTE last32[32];
             strncpy((char*)last32,(char*)(nseed) + 8,32);
@@ -618,11 +615,6 @@ void* work_processor(void* none) {
                 for(index = 0;index < 32;index++){
                     nseed[index + 8] = res2[index];
                 }
-                /*
-                for(i = 0;i < 40;i++){
-                    printf("%02x", nseed[i]);
-                }
-                printf("\n");*/
 
                 SHA256_CTX ctx;
                 BYTE buffer1[SHA256_BLOCK_SIZE];
@@ -637,8 +629,6 @@ void* work_processor(void* none) {
                 sha256_update(&ctx, buffer1, 32);
                 sha256_final(&ctx, buffer2);
                 int pass = memcmp(work->target, buffer2, SHA256_BLOCK_SIZE);
-                //print_uint256(buffer2);
-                //printf("pass value %d\n",pass);
                 if(pass > 0){
                     found = 1;
                     char reply[98];//include "\r\n\0"
@@ -661,7 +651,7 @@ void* work_processor(void* none) {
                     write(work->fd,reply,strlen(reply));
 
                     log_server_msg(work->fd, reply, work->client_ip);
-                    printf("server(%d) : %s",work->fd,reply);
+                    //printf("server(%d) : %s",work->fd,reply);
                     pthread_mutex_lock(&work_mutex);
                     active_work = 0;
                     pthread_mutex_unlock(&work_mutex);
@@ -686,9 +676,8 @@ int handle_soln(char* client_msg) {
     seed[64] = '\0';
     memcpy(solution,msg + 79,16);
     solution[16] = '\0';
-    //printf("seed %s solution %s\n",seed,solution);
     strcat((char*)seed,(char*)solution);
-    printf("x %s\n",seed);
+    //printf("x %s\n",seed);
     BYTE nseed[40];
     int index;
     for (index = 0; index < 40; nseed[index++] = 0);
@@ -703,22 +692,14 @@ int handle_soln(char* client_msg) {
     BYTE dif[9];//difficulty
     memcpy(dif,msg + 5,8);
     dif[8] = '\0';
-    //printf("difficulty : %s\n",dif);
     BYTE alpha[3];
     BYTE beta[7];
     memcpy(alpha,dif,2);
     alpha[2] = '\0';
     memcpy(beta,dif+2,6);
     beta[6] = '\0';
-    //printf("alpha : %s\n",alpha);
-    //printf("beta : %s\n",beta);
     int al = (int)strtol((char*)alpha, NULL, 16);
-    //int be = (int)strtol((char*)beta, NULL, 16);
-    //printf("alpha : %d\n",al);
-    //printf("beta : %d\n",be);
     int pow = 8 * (al - 3);
-    //uint64_t target = be * pow(2, 8 * (al - 3));
-    //printf("power : %d\n",pow);
     BYTE target[64];
     uint256_init(target);
     BYTE b1[3],b2[3],b3[3];
@@ -728,17 +709,14 @@ int handle_soln(char* client_msg) {
     b2[2] = '\0';
     memcpy(b3,beta + 4,2);
     b3[2] = '\0';
-    //printf("b1 : %s,b2 : %s, b3 : %s\n",b1,b2,b3);
     target[29] = (BYTE)strtol((char*)b1, NULL, 16);
     target[30] = (BYTE)strtol((char*)b2, NULL, 16);
     target[31] = (BYTE)strtol((char*)b3, NULL, 16);
-    //printf("%x %x %x\n",target[29],target[30],target[31]);
-    //print_uint256(target);
     BYTE res[64];
     uint256_init(res);
     uint256_sl(res,target,pow);
-    printf("target : ");
-    print_uint256(res);
+//    printf("target : ");
+//    print_uint256(res);
     //res stores target, nseed stores seed | nonce
     SHA256_CTX ctx;
     BYTE buffer1[SHA256_BLOCK_SIZE];
@@ -746,18 +724,15 @@ int handle_soln(char* client_msg) {
     uint256_init(buffer1);
     uint256_init(buffer2);
     sha256_init(&ctx);
-    //printf("nseed size : %d\n",(int)strlen((char*)nseed));
     sha256_update(&ctx, nseed, 40);
     sha256_final(&ctx, buffer1);
     print_uint256(buffer1);
-    //printf("buffer1 size : %d\n",(int)strlen((char*)buffer1));
     sha256_init(&ctx);
     sha256_update(&ctx, buffer1, 32);
     sha256_final(&ctx, buffer2);
     int pass = memcmp(res, buffer2, SHA256_BLOCK_SIZE);
     print_uint256(buffer2);
-    //printf("buffer2 size : %d\n",(int)strlen((char*)buffer2));
-    printf("pass value %d\n",pass);
+    //printf("pass value %d\n",pass);
     if(pass > 0){
         return 1;
         //return "OKAY\r\n";
