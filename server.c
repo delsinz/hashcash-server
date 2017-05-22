@@ -8,7 +8,6 @@ The port number is passed as an argument
  To compile: gcc server.c -o server
 */
 // TODO
-// 1. ERRO message 40 bytes
 // 2. Change code for SOLN, WORK
 //
 
@@ -59,7 +58,6 @@ typedef struct work_s {
 
 int load_options(int argc, char** argv);
 void* connection_handler(void* client_sockfd);
-char* get_response(char* client_msg, size_t msg_len);
 int id_msg(char* msg, size_t msg_len);
 int handle_soln(char* client_msg);
 void handle_work_msg(char* msg, int sock, char* ip);
@@ -186,15 +184,15 @@ void* connection_handler(void* client_sockfd) {
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == PONG) {
-            strcpy(response, "ERRO PONG is reserved for server\r\n");
+            strcpy(response, "ERRO PONG is reserved for server          \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == OKAY) {
-            strcpy(response, "ERRO OKAY is reserved for server\r\n");
+            strcpy(response, "ERRO OKAY is reserved for server          \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == ERRO) {
-            strcpy(response, "ERRO ERRO is reserved for server\r\n");
+            strcpy(response, "ERRO ERRO is reserved for server          \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == SOLN) {
@@ -202,7 +200,7 @@ void* connection_handler(void* client_sockfd) {
             if (pass == 1) {
                 strcpy(response, "OKAY\r\n");
             } else {
-                strcpy(response, "ERRO invalid solution\r\n");
+                strcpy(response, "ERRO invalid solution                     \r\n");
             }
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
@@ -212,7 +210,7 @@ void* connection_handler(void* client_sockfd) {
             handle_abrt_msg(sock, ip);
             print_queue();
         } else {
-            strcpy(response, "ERRO invalid message\r\n");
+            strcpy(response, "ERRO invalid message                      \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         }
@@ -235,68 +233,6 @@ void* connection_handler(void* client_sockfd) {
     pthread_exit(0);
     //return 0;
 }
-
-
-
-char* get_response(char* client_msg, size_t msg_len) {
-    //char* response;
-    if(msg_len < 6) { // If message too short, it can't be valid
-        return "ERRO invalid message\r\n";
-    } else {
-        if (strncmp(client_msg, "PING", 4) == 0) { // Potential PING
-            if(msg_len == 6 && client_msg[4] == '\r' && client_msg[5] == '\n') {
-                return "PONG\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "PONG", 4) == 0) { // Potential PONG
-            if(msg_len == 6 && client_msg[4] == '\r' && client_msg[5] == '\n') {
-                return "ERRO PONG is reserved for server\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "OKAY", 4) == 0) { // Potential OKAY
-            if(msg_len == 6 && client_msg[4] == '\r' && client_msg[5] == '\n') {
-                return "ERRO OKAY is reserved for server\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "ERRO", 4) == 0) { // Potential ERRO
-            if(msg_len == 6 && client_msg[4] == '\r' && client_msg[5] == '\n') {
-                return "ERRO ERRO is reserved for server\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "SOLN", 4) == 0) { // Potential SOLN
-            if(msg_len == 97 && client_msg[95] == '\r' && client_msg[96] == '\n') { // SOLN message fixed len 97
-                int pass = handle_soln(client_msg);
-                if(pass == 1) {
-                    return "OKAY\r\n";
-                } else {
-                    return "ERRO not a solution\r\n";
-                }
-//                return "This is a SOLN message\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "WORK", 4) == 0) { // Potential WORK
-            if(msg_len == 100 && client_msg[98] == '\r' && client_msg[99] == '\n') { // WORK message fixed len 100
-                return "This is a WORK message";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else if (strncmp(client_msg, "ABRT", 4) == 0) { // Potential ABRT
-            if(msg_len == 6 && client_msg[4] == '\r' && client_msg[5] == '\n') {
-                return "OKAY\r\n";
-            } else {
-                return "ERRO invalid message\r\n";
-            }
-        } else {
-            return "ERRO invalid message\r\n"; // All other headers are invalid
-        }
-    }
-}
-
 
 
 /* Identify type of message */
@@ -414,7 +350,7 @@ void handle_work_msg(char* msg, int sock, char* ip) {
         print_queue();
         pthread_mutex_unlock(&queue_mutex);
     } else {
-        char* response = "ERRO work queue is full\r\n";
+        char* response = "ERRO work queue is full                   \r\n";
         write(sock, response, strlen(response));
         log_server_msg(sock, response, ip);
     }
