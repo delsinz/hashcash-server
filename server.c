@@ -76,10 +76,12 @@ void* work_processor(void* none);
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t work_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t client_count_mutex = PTHREAD_MUTEX_INITIALIZER;
 Work* work_queue = NULL;
 Work* queue_end = NULL;
 Work* active_work_pointer;
 int active_work;
+int client_count;
 
 
 
@@ -123,8 +125,14 @@ int main(int argc, char **argv)
     puts("Start listening.");
     clilen = sizeof(cli_addr);
 
+    /* Count number of connected clients */
+    pthread_mutex_lock(&client_count_mutex);
+    client_count = 0;
+    pthread_mutex_unlock(&client_count_mutex);
+
     /* Thread to handle WORK messages */
     pthread_mutex_lock(&work_mutex);
+    active_work_pointer = NULL;
     active_work = 0;
     pthread_mutex_unlock(&work_mutex);
     pthread_t worker;
@@ -132,20 +140,26 @@ int main(int argc, char **argv)
 
 
     while(1) {
-        client_sockfd = accept(sockfd, (struct sockaddr*) &cli_addr, (socklen_t*) &clilen);
+        if (client_count < MAX_CLIENTS) {
+            client_sockfd = accept(sockfd, (struct sockaddr*) &cli_addr, (socklen_t*) &clilen);
 
-        if(client_sockfd < 0) {
-            perror("ERROR on accept");
-            continue;
+            if(client_sockfd < 0) {
+                perror("ERROR on accept");
+                continue;
+            }
+
+            // Hand the connection to a new thread
+            puts("Connection accepted");
+            int* new_sock = malloc(1);
+            *new_sock = client_sockfd;
+            pthread_t thread_id;
+            pthread_create(&thread_id, NULL, connection_handler, (void*) new_sock);
+            puts("Handler assigned");
+            // Increment the number of clients
+            pthread_mutex_lock(&client_count_mutex);
+            client_count ++;
+            pthread_mutex_unlock(&client_count_mutex);
         }
-
-        // Hand the connection to a new thread
-        puts("Connection accepted");
-        int* new_sock = malloc(1);
-        *new_sock = client_sockfd;
-        pthread_t thread_id;
-        pthread_create(&thread_id, NULL, connection_handler, (void*) new_sock);
-        puts("Handler assigned");
     }
 }
 
@@ -226,6 +240,12 @@ void* connection_handler(void* client_sockfd) {
         abort_work(sock);
         log_disconnection(sock, ip);
         close(sock);
+        
+        // Decrease number of clients
+        pthread_mutex_lock(&client_count_mutex);
+        client_count --;
+        pthread_mutex_unlock(&client_count_mutex);
+
         puts("client disconnected.");
         fflush(stdout);
     } else if (read_size == -1) {
