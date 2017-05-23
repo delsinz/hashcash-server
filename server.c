@@ -8,7 +8,9 @@ The port number is passed as an argument
  To compile: gcc server.c -o server
 */
 // TODO
+// 1. Handle clients limit
 // 2. Change code for SOLN, WORK
+// 3. Handle invalid message
 //
 
 #include <stdio.h>
@@ -184,15 +186,15 @@ void* connection_handler(void* client_sockfd) {
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == PONG) {
-            strcpy(response, "ERRO PONG is reserved for server          \r\n");
+            strcpy(response, "ERRO PONG is reserved for server           \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == OKAY) {
-            strcpy(response, "ERRO OKAY is reserved for server          \r\n");
+            strcpy(response, "ERRO OKAY is reserved for server           \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == ERRO) {
-            strcpy(response, "ERRO ERRO is reserved for server          \r\n");
+            strcpy(response, "ERRO ERRO is reserved for server           \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         } else if (msg_type == SOLN) {
@@ -200,7 +202,7 @@ void* connection_handler(void* client_sockfd) {
             if (pass == 1) {
                 strcpy(response, "OKAY\r\n");
             } else {
-                strcpy(response, "ERRO invalid solution                     \r\n");
+                strcpy(response, "ERRO invalid solution                      \r\n");
             }
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
@@ -210,7 +212,7 @@ void* connection_handler(void* client_sockfd) {
             handle_abrt_msg(sock, ip);
             print_queue();
         } else {
-            strcpy(response, "ERRO invalid message                      \r\n");
+            strcpy(response, "ERRO invalid message                       \r\n");
             write(sock, response, strlen(response));
             log_server_msg(sock, response, ip);
         }
@@ -350,7 +352,7 @@ void handle_work_msg(char* msg, int sock, char* ip) {
         print_queue();
         pthread_mutex_unlock(&queue_mutex);
     } else {
-        char* response = "ERRO work queue is full                   \r\n";
+        char* response = "ERRO work queue is full                    \r\n";
         write(sock, response, strlen(response));
         log_server_msg(sock, response, ip);
     }
