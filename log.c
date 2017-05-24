@@ -1,3 +1,9 @@
+/*
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
+*/
+
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/time.h>

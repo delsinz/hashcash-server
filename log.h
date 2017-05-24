@@ -1,3 +1,9 @@
+/*
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
+*/
+
 void start_log();
 void lock_logfile();
 void unlock_logfile();

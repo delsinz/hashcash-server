@@ -1,9 +1,13 @@
 /*
- To compile: gcc server.c -o server
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
 */
 
-// TODO: check ERRO msg length
 // TODO: improve WORK processor
+// TODO: handle incomplete message
+// TODO: write after disconnet
+// TODO: broken pipe. signal(SIGPIPE, SIG_IGN)
 
 
 #include <stdio.h>
@@ -14,6 +18,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 #include "server.h"
 #include "log.h"
 
@@ -30,8 +35,9 @@ int client_count;
 
 
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
+    signal(SIGPIPE, SIG_IGN);
+
     int sockfd, client_sockfd, portno, clilen;
 
     struct sockaddr_in serv_addr, cli_addr;
@@ -123,6 +129,7 @@ int load_options(int argc, char** argv) {
 
 void* connection_handler(void* client_sockfd) {
     pthread_detach(pthread_self());
+    signal(SIGPIPE, SIG_IGN);
 
     int sock = *(int*)client_sockfd;
     char ip[INET_ADDRSTRLEN];
@@ -465,6 +472,7 @@ void print_queue() {
 
 void* work_processor(void* none) {
     pthread_detach(pthread_self());
+    signal(SIGPIPE, SIG_IGN);
     (void)none;
     Work* work;
 

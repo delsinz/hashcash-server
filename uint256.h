@@ -1,3 +1,9 @@
+/*
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
+*/
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

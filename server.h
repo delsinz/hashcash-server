@@ -1,3 +1,9 @@
+/*
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
+*/
+
 #include "sha256.h"
 #include "uint256.h"
 

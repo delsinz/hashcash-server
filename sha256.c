@@ -1,3 +1,9 @@
+/*
+ name: Mingyang Zhang
+ login: mingyangz
+ id: 650242
+*/
+
 /*********************************************************************
 * Filename:   sha256.c
 * Author:     Brad Conte (brad AT bradconte.com)
