@@ -31,6 +31,6 @@ clobber: clean
 
 ## Dependencies
 
-server.o:	log.h sha256.h uint256.h
+server.o:	log.h server.h
 log.o: log.h
 sha256.o: sha256.h
