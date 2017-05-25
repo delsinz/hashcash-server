@@ -4,10 +4,7 @@
  id: 650242
 */
 
-// TODO: improve WORK processor
-// TODO: handle incomplete message
-// TODO: write after disconnet
-// TODO: broken pipe. signal(SIGPIPE, SIG_IGN)
+// TODO: improve WORK
 
 
 #include <stdio.h>
@@ -472,8 +469,8 @@ void print_queue() {
 
 void* work_processor(void* none) {
     pthread_detach(pthread_self());
-    signal(SIGPIPE, SIG_IGN);
     (void)none;
+    signal(SIGPIPE, SIG_IGN);
     Work* work;
 
     for (;;) {
@@ -484,8 +481,8 @@ void* work_processor(void* none) {
             pthread_mutex_unlock(&queue_mutex);
             if(work != NULL){
                 pthread_mutex_lock(&work_mutex);
-                active_work = 1;
                 active_work_pointer = work;
+                active_work = 1;
                 pthread_mutex_unlock(&work_mutex);
             }
         }
@@ -496,45 +493,45 @@ void* work_processor(void* none) {
             uint256_init(nonce);
             int i;
             for(i = 0; i < 16; i += 2) {
-                char temp[3];
-                temp[2] = '\0';
-                strncpy(temp, (char*)(work->start + i), 2);
-                int int_dec = (int)strtol(temp, NULL, 16);
+                char buff[3];
+                buff[2] = '\0';
+                strncpy(buff, (char*)(work->start + i), 2);
+                int int_dec = (int)strtol(buff, NULL, 16);
                 nonce[24 + i/2] = int_dec;
             }
 
             // Prep seed | nonce
-            BYTE seed_nonce[40];
             char filler_nonce[17] = "0000000000000000";
+            BYTE seed_nonce[40];
             strcat((char*)work->seed_nonce, filler_nonce);
             int j;
             for (j = 0; j < 40; seed_nonce[j++] = 0);
             for(j = 0; j < 80; j += 2) {
-                char temp[3];
-                temp[2] = '\0';
-                strncpy(temp, (char*)(work->seed_nonce + j), 2);
-                int int_dec = (int)strtol(temp, NULL, 16);
+                char buff[3];
+                buff[2] = '\0';
+                strncpy(buff, (char*)(work->seed_nonce + j), 2);
+                int int_dec = (int)strtol(buff, NULL, 16);
                 seed_nonce[j/2] = int_dec;
             }
             work->seed_nonce[64] = '\0';
 
             // Start searching for solution
-            BYTE one[32], bseed_nonce[32], last32_byte[32];
+            BYTE one[32], bseed_nonce[32], bseed_nonce_base[32];
             uint256_init(one);
             uint256_init(bseed_nonce);
             one[31] = 0x1;
-            strncpy((char*)last32_byte, (char*)(seed_nonce) + 8, 32);
+            strncpy((char*)bseed_nonce_base, (char*)(seed_nonce) + 8, 32);
             int found = 0;
             while(!found && active_work == 1){
                 // Increment nonce value
                 uint256_add(nonce, nonce, one);
-                uint256_add(bseed_nonce, last32_byte, nonce);
+                uint256_add(bseed_nonce, bseed_nonce_base, nonce);
                 int k;
                 for(k = 0; k < 32; k ++){
                     seed_nonce[k + 8] = bseed_nonce[k];
                 }
 
-                // Double hash it!
+                // Hash it twice
                 BYTE hash1[SHA256_BLOCK_SIZE], hash2[SHA256_BLOCK_SIZE];
                 SHA256_CTX ctx;
                 uint256_init(hash1);
@@ -572,8 +569,8 @@ void* work_processor(void* none) {
                     // Logging, cleaning up
                     log_server_msg(work->sock, soln_msg, work->client_ip);
                     pthread_mutex_lock(&work_mutex);
-                    active_work = 0;
                     active_work_pointer = NULL;
+                    active_work = 0;
                     pthread_mutex_unlock(&work_mutex);
                     free(work);
                 }
@@ -635,9 +632,10 @@ int handle_soln(char* client_msg) {
     int i;
     for (i = 0; i < 40; seed_nonce[i++] = 0);
     for(i = 0; i < 80; i += 2){
-        char temp[2];
-        strncpy(temp,(char*)(seed_solution + i),2);
-        int number = (int)strtol(temp, NULL, 16);
+        char buff[3];
+        buff[2] = '\0';
+        strncpy(buff, (char*)(seed_solution + i),2);
+        int number = (int)strtol(buff, NULL, 16);
         seed_nonce[i/2] = number;
     }
 
