@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <string.h>
 #include "log.h"
 
 #define FILEPATH "log.txt"
@@ -159,7 +160,7 @@ void log_server_msg(int socket, char* msg, char* ip) {
 //    fprintf(logfile, "client IP: %s\n", get_ip(socket));
 //}
 
-char* get_ip(int socket) {
+void get_ip(char* ip_buff, int socket) {
     // use sockaddr_storage to keep address in family-agnostic manner
     struct sockaddr_storage client;
     socklen_t client_size = sizeof client;
@@ -176,18 +177,21 @@ char* get_ip(int socket) {
 
             // Success!
             //fprintf(logfile, "Client IP: %s\n", ip);
-            return ip;
+            strcpy(ip_buff, ip);
+            return;
 
         } else {
             // null! failure
             perror("error presenting ip address with inet_ntop");
             //fprintf(logfile, "unknown ip address");
-            return "unknown IP address";
+            strcpy(ip_buff, "unknown");
+            return;
         }
     } else {
         perror("error looking up client ip");
         //fprintf(logfile, "unknown ip address");
-        return "unknown IP address";
+        strcpy(ip_buff, "unknown");
+        return;
     }
 }
 

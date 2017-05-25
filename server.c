@@ -4,8 +4,6 @@
  id: 650242
 */
 
-// TODO: improve WORK
-
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,7 +128,8 @@ void* connection_handler(void* client_sockfd) {
 
     int sock = *(int*)client_sockfd;
     char ip[INET_ADDRSTRLEN];
-    strcpy(ip, get_ip(sock));
+    //strcpy(ip, get_ip(sock));
+    get_ip(ip, sock);
     log_connection(sock, ip);
 
     char response[MAX_MSG_SIZE], client_msg[MAX_MSG_SIZE];
@@ -264,32 +263,31 @@ int id_msg(char* msg, size_t msg_len) {
 void handle_work_msg(char* msg, int sock, char* ip) {
     if (queue_len() < MAX_WORKS) {
         // Extract alpha, beta as byte
-        BYTE difficulty[9];//difficulty
-        memcpy(difficulty, msg + 5, 8);
+        char difficulty[9], alpha[3], beta[7];
         difficulty[8] = '\0';
-        BYTE alpha[3];
-        BYTE beta[7];
-        memcpy(alpha, difficulty, 2);
         alpha[2] = '\0';
-        memcpy(beta, difficulty + 2, 6);
         beta[6] = '\0';
+        memcpy(difficulty, msg + 5, 8);
+        memcpy(alpha, difficulty, 2);
+        memcpy(beta, difficulty + 2, 6);
 
         // Compute alpha as int
-        int alpha_int = (int)strtol((char*)alpha, NULL, 16);
-        int power = 8 * (alpha_int - 3);
+        int alpha_int = (int)strtol(alpha, NULL, 16);
+        int power = (alpha_int - 3) * 8;
 
         // Parse beta in byte form
-        BYTE byte1[3], byte2[3], byte3[3], beta_byte[32];
-        memcpy(byte1, beta, 2);
+        char byte1[3], byte2[3], byte3[3];
+        BYTE beta_byte[32];
         byte1[2] = '\0';
-        memcpy(byte2, beta + 2, 2);
         byte2[2] = '\0';
-        memcpy(byte3, beta + 4, 2);
         byte3[2] = '\0';
+        memcpy(byte1, beta, 2);
+        memcpy(byte2, beta + 2, 2);
+        memcpy(byte3, beta + 4, 2);
         uint256_init(beta_byte);
-        beta_byte[29] = (BYTE)strtol((char*)byte1, NULL, 16);
-        beta_byte[30] = (BYTE)strtol((char*)byte2, NULL, 16);
-        beta_byte[31] = (BYTE)strtol((char*)byte3, NULL, 16);
+        beta_byte[29] = (BYTE)strtol(byte1, NULL, 16);
+        beta_byte[30] = (BYTE)strtol(byte2, NULL, 16);
+        beta_byte[31] = (BYTE)strtol(byte3, NULL, 16);
 
         // Compute target
         BYTE target[32];
@@ -310,18 +308,18 @@ void handle_work_msg(char* msg, int sock, char* ip) {
 
         // Prepare work for insertion
         Work* work = malloc(sizeof(Work));
-        work->prev = NULL;
-        work->next = NULL;
         work->sock = sock;
         work->worker_count = thread_count;
+        work->prev = NULL;
+        work->next = NULL;
         int i;
         for(i = 0; i < 32; i++){
             work->target[i] = target[i];
         }
         strcpy((char*)(work->difficulty),(char*)difficulty);
+        strcpy(work->client_ip, ip);
         strcpy((char*)(work->seed_nonce),(char*)seed_nonce);
         strcpy((char*)(work->start),(char*)start);
-        strcpy(work->client_ip, ip);
 
         // Append work to queue
         pthread_mutex_lock(&queue_mutex);
@@ -452,11 +450,10 @@ int queue_len() {
 
 
 void print_queue() {
-    Work* temp = work_queue;
     int n = 0;
+    Work* temp = work_queue;
     while(temp != NULL) {
         n += 1;
-        print_uint256(temp->target);
         printf("seed %s\n",temp->seed_nonce);
         printf("solution %s\n",temp->start);
         printf("=============================\n");
@@ -501,11 +498,17 @@ void* work_processor(void* none) {
             }
 
             // Prep seed | nonce
-            char filler_nonce[17] = "0000000000000000";
+            char filler_nonce[17];
+            memset(filler_nonce, '0', 17);
+            filler_nonce[16] = '\0';
             BYTE seed_nonce[40];
             strcat((char*)work->seed_nonce, filler_nonce);
             int j;
-            for (j = 0; j < 40; seed_nonce[j++] = 0);
+            j = 0;
+            while (j < 40) {
+                seed_nonce[j] = 0;
+                j ++;
+            }
             for(j = 0; j < 80; j += 2) {
                 char buff[3];
                 buff[2] = '\0';
@@ -537,10 +540,10 @@ void* work_processor(void* none) {
                 uint256_init(hash1);
                 uint256_init(hash2);
                 sha256_init(&ctx);
-                sha256_update(&ctx, seed_nonce, 40);
+                sha256_update(&ctx, seed_nonce, HASH1);
                 sha256_final(&ctx, hash1);
                 sha256_init(&ctx);
-                sha256_update(&ctx, hash1, 32);
+                sha256_update(&ctx, hash1, HASH2);
                 sha256_final(&ctx, hash2);
                 int result = memcmp(work->target, hash2, SHA256_BLOCK_SIZE);
 
@@ -587,30 +590,31 @@ int handle_soln(char* client_msg) {
     strcpy(msg, client_msg);
 
     // Extract alpha, beta
-    BYTE difficulty[9], alpha[3], beta[7];
-    memcpy(difficulty, msg + 5, 8);
+    char difficulty[9], alpha[3], beta[7];
     difficulty[8] = '\0';
-    memcpy(alpha, difficulty, 2);
     alpha[2] = '\0';
-    memcpy(beta, difficulty+2, 6);
     beta[6] = '\0';
+    memcpy(difficulty, msg + 5, 8);
+    memcpy(alpha, difficulty, 2);
+    memcpy(beta, difficulty+2, 6);
 
     // Compute alpha as int
     int alpha_int = (int)strtol((char*)alpha, NULL, 16);
-    int power = 8 * (alpha_int - 3);
+    int power = (alpha_int - 3) * 8;
 
     // Parse beta in byte form
-    BYTE byte1[3], byte2[3], byte3[3], beta_byte[32];
-    memcpy(byte1, beta, 2);
+    char byte1[3], byte2[3], byte3[3];
+    BYTE beta_byte[32];
     byte1[2] = '\0';
-    memcpy(byte2, beta + 2, 2);
     byte2[2] = '\0';
-    memcpy(byte3, beta + 4, 2);
     byte3[2] = '\0';
+    memcpy(byte1, beta, 2);
+    memcpy(byte2, beta + 2, 2);
+    memcpy(byte3, beta + 4, 2);
     uint256_init(beta_byte);
-    beta_byte[29] = (BYTE)strtol((char*)byte1, NULL, 16);
-    beta_byte[30] = (BYTE)strtol((char*)byte2, NULL, 16);
-    beta_byte[31] = (BYTE)strtol((char*)byte3, NULL, 16);
+    beta_byte[29] = (BYTE)strtol(byte1, NULL, 16);
+    beta_byte[30] = (BYTE)strtol(byte2, NULL, 16);
+    beta_byte[31] = (BYTE)strtol(byte3, NULL, 16);
 
     // Compute target
     BYTE target[64];
@@ -630,7 +634,11 @@ int handle_soln(char* client_msg) {
     // Prep seed | nonce for processing
     BYTE seed_nonce[40];
     int i;
-    for (i = 0; i < 40; seed_nonce[i++] = 0);
+    i = 0;
+    while(i < 40) {
+        seed_nonce[i] = 0;
+        i ++;
+    }
     for(i = 0; i < 80; i += 2){
         char buff[3];
         buff[2] = '\0';
@@ -645,10 +653,10 @@ int handle_soln(char* client_msg) {
     uint256_init(hash1);
     uint256_init(hash2);
     sha256_init(&ctx);
-    sha256_update(&ctx, seed_nonce, 40);
+    sha256_update(&ctx, seed_nonce, HASH1);
     sha256_final(&ctx, hash1);
     sha256_init(&ctx);
-    sha256_update(&ctx, hash1, 32);
+    sha256_update(&ctx, hash1, HASH2);
     sha256_final(&ctx, hash2);
     int result = memcmp(target, hash2, SHA256_BLOCK_SIZE);
     if(result > 0){

@@ -19,6 +19,8 @@
 #define WORK 5
 #define ABRT 6
 #define INVALID 7
+#define HASH1 40
+#define HASH2 32
 
 
 
