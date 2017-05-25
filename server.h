@@ -29,10 +29,10 @@ typedef struct work_s {
     struct work_s* next;
 
     // These 4 attributes have fixed length
-    BYTE target[32];
-    BYTE seed_nonce[81]; // last 16 bytes are reserved for solution
-    BYTE start[17];
-    BYTE difficulty[9];
+    char target[32];
+    char seed_nonce[81]; // last 16 bytes are reserved for solution
+    char start[17];
+    char difficulty[9];
 
     char client_ip[INET_ADDRSTRLEN];
     int worker_count;

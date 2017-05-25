@@ -295,7 +295,7 @@ void handle_work_msg(char* msg, int sock, char* ip) {
         uint256_sl(target, beta_byte, power);
 
         // Extract seed, start, worker count
-        BYTE seed_nonce[81], start[17], thread_count_byte[3];
+        char seed_nonce[81], start[17], thread_count_byte[3];
         memset(seed_nonce, 0, 64);
         memset(start, 0, 16);
         memset(thread_count_byte, 0, 3);
@@ -304,7 +304,7 @@ void handle_work_msg(char* msg, int sock, char* ip) {
         memcpy(start, msg + 79, 16);
         start[16] = '\0';
         memcpy(thread_count_byte, msg + 96, 2);
-        int thread_count = (int)strtol((char*)thread_count_byte, NULL, 16);
+        int thread_count = (int)strtol(thread_count_byte, NULL, 16);
 
         // Prepare work for insertion
         Work* work = malloc(sizeof(Work));
@@ -316,10 +316,10 @@ void handle_work_msg(char* msg, int sock, char* ip) {
         for(i = 0; i < 32; i++){
             work->target[i] = target[i];
         }
-        strcpy((char*)(work->difficulty),(char*)difficulty);
+        strcpy(work->difficulty,(char*)difficulty);
         strcpy(work->client_ip, ip);
-        strcpy((char*)(work->seed_nonce),(char*)seed_nonce);
-        strcpy((char*)(work->start),(char*)start);
+        strcpy(work->seed_nonce, seed_nonce);
+        strcpy(work->start, start);
 
         // Append work to queue
         pthread_mutex_lock(&queue_mutex);
@@ -345,17 +345,17 @@ void handle_abrt_msg(int sock, char* ip) {
 
 
 void abort_work(int sock) {
-    pthread_mutex_lock(&work_mutex);
     pthread_mutex_lock(&queue_mutex);
     remove_elements(sock);
+    pthread_mutex_unlock(&queue_mutex);
     if(active_work_pointer!= NULL) {
         if(active_work_pointer->sock == sock) {
+            pthread_mutex_lock(&work_mutex);
             active_work = 0;
             active_work_pointer = NULL;
+            pthread_mutex_unlock(&work_mutex);
         }
     }
-    pthread_mutex_unlock(&queue_mutex);
-    pthread_mutex_unlock(&work_mutex);
 }
 
 
@@ -454,8 +454,8 @@ void print_queue() {
     Work* temp = work_queue;
     while(temp != NULL) {
         n += 1;
-        printf("seed %s\n",temp->seed_nonce);
-        printf("solution %s\n",temp->start);
+        printf("seed %s\n", temp->seed_nonce);
+        printf("solution %s\n", temp->start);
         printf("=============================\n");
         temp = temp->next;
     }
@@ -492,7 +492,7 @@ void* work_processor(void* none) {
             for(i = 0; i < 16; i += 2) {
                 char buff[3];
                 buff[2] = '\0';
-                strncpy(buff, (char*)(work->start + i), 2);
+                strncpy(buff, (work->start + i), 2);
                 int int_dec = (int)strtol(buff, NULL, 16);
                 nonce[24 + i/2] = int_dec;
             }
@@ -502,7 +502,7 @@ void* work_processor(void* none) {
             memset(filler_nonce, '0', 17);
             filler_nonce[16] = '\0';
             BYTE seed_nonce[40];
-            strcat((char*)work->seed_nonce, filler_nonce);
+            strcat(work->seed_nonce, filler_nonce);
             int j;
             j = 0;
             while (j < 40) {
@@ -512,7 +512,7 @@ void* work_processor(void* none) {
             for(j = 0; j < 80; j += 2) {
                 char buff[3];
                 buff[2] = '\0';
-                strncpy(buff, (char*)(work->seed_nonce + j), 2);
+                strncpy(buff, (work->seed_nonce + j), 2);
                 int int_dec = (int)strtol(buff, NULL, 16);
                 seed_nonce[j/2] = int_dec;
             }
@@ -555,9 +555,9 @@ void* work_processor(void* none) {
                     char soln_msg[98], nonce_str[17];
                     nonce_str[16] = '\0';
                     strcpy(soln_msg, "SOLN ");
-                    strcat(soln_msg, (char*)work->difficulty);
+                    strcat(soln_msg, work->difficulty);
                     strcat(soln_msg, " ");
-                    strcat(soln_msg, (char*)work->seed_nonce);
+                    strcat(soln_msg, work->seed_nonce);
                     strcat(soln_msg, " ");
                     int len = 0;
                     int l;
